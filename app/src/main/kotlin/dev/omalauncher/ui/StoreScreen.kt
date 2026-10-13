@@ -102,6 +102,7 @@ fun StoreScreen(
                     linux = engine.linux,
                     page = page,
                     message = message,
+                    shown = market.installedVersion(e)?.let { engine.shownHere(it.file) } ?: false,
                     showBack = showBack,
                     modifier = modifier,
                     onBack = {
@@ -113,6 +114,10 @@ fun StoreScreen(
                             message = market.install(e, page)
                             if (message == null) onDismiss()
                         }
+                    },
+                    onShow = {
+                        market.installedVersion(e)?.let { engine.reveal(it.file, page) }
+                        onDismiss()
                     },
                 )
             }
@@ -362,11 +367,13 @@ private fun Detail(
     linux: Boolean,
     page: Int,
     message: String?,
+    shown: Boolean,
     /** The way back to the grid; off where the grid stays beside the page. */
     showBack: Boolean,
     modifier: Modifier,
     onBack: () -> Unit,
     onInstall: () -> Unit,
+    onShow: () -> Unit,
 ) = key(e.id) {
     val installed = market.installedVersion(e)
     val update = market.hasUpdate(e)
@@ -402,6 +409,7 @@ private fun Detail(
             busy != null -> BasicText(busy, style = Mono.copy(color = Palette.accent))
             !e.supported -> BasicText("needs a newer launcher (owl ${e.owl}); update the launcher to install it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
             update -> BracketAction("update ${installed?.version} → ${e.version}", Palette.accent, onInstall)
+            installed != null && !shown -> BracketAction("show on page $page", Palette.accent, onShow)
             installed != null -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))
             else -> BracketAction("add to page $page", Palette.accent, onInstall)
         }

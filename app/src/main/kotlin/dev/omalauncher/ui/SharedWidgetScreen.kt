@@ -88,16 +88,21 @@ fun SharedWidgetScreen(
                     BasicText("needs a newer launcher (owl ${p.level}); update the launcher to add it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
                 else -> {
                     val same = engine.sharedWidgetIsSame(shared)
-                    when (same) {
-                        true -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))
-                        false ->
+                    when {
+                        same == true && engine.shownHere(shared.fileName) -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))
+                        same == true ->
+                            BracketAction("show on page $page", Palette.accent) {
+                                engine.reveal(shared.fileName, page)
+                                onDismiss()
+                            }
+                        same == false ->
                             BracketAction("replace the ${shared.name} shared before", Palette.accent) {
                                 scope.launch {
                                     engine.addSharedWidget(shared, page)
                                     onDismiss()
                                 }
                             }
-                        null ->
+                        else ->
                             BracketAction("add to page $page", Palette.accent) {
                                 scope.launch {
                                     engine.addSharedWidget(shared, page)
