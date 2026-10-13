@@ -69,6 +69,7 @@ fun HomeScreen(
     SideEffect { engine.switchTo(profile) }
     // One empty page always waits after the last one, to drop tiles on or pin apps to. Pages only exist
     // while they hold something, so it becomes a real page once used and a new empty one follows.
+    val listProfile = engine.profiles.active
     val pageNumbers =
         engine.pages
             .let { if (engine.itemsOn(it.last()).isEmpty()) it else it + (it.last() + 1) }
@@ -103,16 +104,20 @@ fun HomeScreen(
     // unfold, to the open page the folded one pairs into). Editing and an open folder end, as their tile may be elsewhere.
     val lastPage = remember { mutableMapOf<Profile, Int>() }
     var shownProfile by remember { mutableStateOf(profile) }
+    // The page showing when a switch began; kept across a cancelled, retried scroll, which would otherwise read a later one.
+    var switchFrom by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(profile, pageNumbers) {
-        if (profile == shownProfile || engine.profiles.active != profile) return@LaunchedEffect
-        lastPage[shownProfile] = state.currentPage
-        val target = lastPage[profile] ?: if (profile == Profile.Open) (state.currentPage + 1) / 2 else state.currentPage
-        shownProfile = profile
+        // Wait for the page list of the profile now showing (switchTo has run); the earlier list is the old profile's.
+        if (profile == shownProfile || listProfile != profile) return@LaunchedEffect
+        val from = switchFrom ?: state.currentPage.also { switchFrom = it; lastPage[shownProfile] = it }
+        val target = lastPage[profile] ?: if (profile == Profile.Open) (from + 1) / 2 else from
         state.editing = null
         arrange.folder = null
         pager.scrollToPage(pageNumbers.indexOf(target).coerceAtLeast(0))
+        shownProfile = profile
+        switchFrom = null
     }
-    // The drawer pins apps to whichever page is showing (the left one of a pair).
+    // The drawer pins apps to whichever page is showing.
     LaunchedEffect(pager.currentPage, pageNumbers) {
         state.currentPage = pageNumbers.getOrElse(pager.currentPage) { 1 }
         engine.activePage = state.currentPage

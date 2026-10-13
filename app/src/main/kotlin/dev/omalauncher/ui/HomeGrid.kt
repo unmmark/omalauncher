@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
  * side: the same cells, [rows] of them across and [cols] down, so tiles keep their place and
  * shape. Everything else here works in those portrait cells.
  *
- * [per] pages stand side by side, each [width] wide (two on a foldable's inner screen); a page's
+ * [per] pages stand side by side, each [width] wide (currently always 1: a foldable's inner screen shows one wide page); a page's
  * cells are in its own coordinates, [local] and [screen] convert.
  *
  * [gap] is between tiles; [pad] is around them on each side of a page: the gap to the screen's
@@ -279,9 +279,8 @@ internal class Arrange {
  * drawn over it (the recent apps strip) can take them first. [turned] lays
  * portrait's grid on its side, for landscape.
  *
- * With [per] of 2 (an unfolded foldable) each pager slot shows two of [pages]
- * side by side, so every tile keeps the size it has folded; [pages] then holds
- * an even number, and the pager counts slots.
+ * With [per] above 1 (currently unused) each pager slot shows that many of [pages]
+ * side by side; [pages] then holds a multiple of [per], and the pager counts slots.
  */
 @Composable
 internal fun HomeGrid(
