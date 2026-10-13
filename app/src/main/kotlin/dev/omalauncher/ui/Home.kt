@@ -116,7 +116,8 @@ fun HomeScreen(
         // Wait for the page list of the profile now showing (switchTo has run); the earlier list is the old profile's.
         if (listProfile != profile) return@LaunchedEffect
         val from = switchFrom ?: state.currentPage.also { switchFrom = it; lastPage[shownProfile] = it }
-        val target = lastPage[profile] ?: if (profile == Profile.Open) (from + 1) / 2 else from
+        // First time on this profile since the launcher started: the page that pairs with the one showing.
+        val target = lastPage[profile] ?: if (profile == Profile.Open) (from + 1) / 2 else from * 2 - 1
         state.editing = null
         arrange.folder = null
         pager.scrollToPage(pageNumbers.indexOf(target).coerceAtLeast(0))
@@ -276,8 +277,10 @@ fun HomeScreen(
         HomeGrid(
             pager = pager,
             pages = pageNumbers,
-            itemsOn = engine::itemsOn,
-            layout = engine.layout,
+            // The pages lay out their tiles after this composes, by when a fold or unfold may have switched profiles:
+            // they read the items of the profile whose layout they get, not of whichever shows by then.
+            itemsOn = remember(listProfile) { { page: Int -> engine.itemsOn(page, listProfile) } },
+            layout = engine.profiles.layoutOf(listProfile),
             arrange = arrange,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             selected = state.editing,
@@ -369,6 +372,8 @@ fun HomeScreen(
             },
             onGroup = { app, target -> engine.shortcuts.group(app, target) },
             onReorder = { app, before -> engine.shortcuts.moveBefore(app.key, before) },
+            // The profile this frame was composed for is the one showing (switchTo has run for it).
+            showing = { it === engine.layout && engine.profiles.active == profile },
         )
     }
 
