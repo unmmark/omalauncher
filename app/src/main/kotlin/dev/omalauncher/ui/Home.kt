@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import dev.omalauncher.widgets.Profile
+import dev.omalauncher.widgets.foldedPageOf
+import dev.omalauncher.widgets.openPageOf
 import androidx.compose.ui.platform.LocalWindowInfo
 import android.app.WallpaperManager
 import androidx.activity.compose.BackHandler
@@ -117,7 +119,7 @@ fun HomeScreen(
         if (listProfile != profile) return@LaunchedEffect
         val from = switchFrom ?: state.currentPage.also { switchFrom = it; lastPage[shownProfile] = it }
         // First time on this profile since the launcher started: the page that pairs with the one showing.
-        val target = lastPage[profile] ?: if (profile == Profile.Open) (from + 1) / 2 else from * 2 - 1
+        val target = lastPage[profile] ?: if (profile == Profile.Open) openPageOf(from) else foldedPageOf(from)
         state.editing = null
         arrange.folder = null
         pager.scrollToPage(pageNumbers.indexOf(target).coerceAtLeast(0))

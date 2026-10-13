@@ -79,12 +79,14 @@ class WidgetLayout(
     /** The page [name] was moved to on the phone, if it was. */
     fun page(name: String) = pages[name]
 
+    /** Saves unless [persist] is false, for callers setting many at once and saving after. */
     fun setPage(
         name: String,
         page: Int,
+        persist: Boolean = true,
     ) {
         pages[name] = page
-        save()
+        if (persist) save()
     }
 
     fun cell(name: String) = cells[name]
@@ -193,15 +195,17 @@ class WidgetLayout(
     }
 
     /** Drops [name]'s cell but keeps its page, so it's placed afresh in the first free spot there. */
-    fun clearCell(name: String) {
-        if (cells.remove(name) != null) save()
+    fun clearCell(
+        name: String,
+        persist: Boolean = true,
+    ) {
+        if (cells.remove(name) != null && persist) save()
     }
 
     /** Forgets everything about [name]: its cell and page. */
     fun remove(name: String) {
-        cells.remove(name)
-        pages.remove(name)
-        save()
+        val hadCell = cells.remove(name) != null
+        if (pages.remove(name) != null || hadCell) save()
     }
 
     /** The home grid's cell width and height on screen and the gap between tiles, in pixels, as last laid out. */

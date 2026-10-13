@@ -102,7 +102,7 @@ fun StoreScreen(
                     linux = engine.linux,
                     page = page,
                     message = message,
-                    shown = market.installedVersion(e)?.let { engine.shownHere(it.file) } ?: false,
+                    shown = market.installedVersion(e)?.let { engine.shownHere(it.file) } == true,
                     showBack = showBack,
                     modifier = modifier,
                     onBack = {

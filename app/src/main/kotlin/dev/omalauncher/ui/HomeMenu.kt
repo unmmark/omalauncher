@@ -131,7 +131,6 @@ fun HiddenMenu(
         for (item in items) {
             MenuItem(hiddenLabel(item)) {
                 engine.reveal(item.key, state.currentPage)
-                if (items.size == 1) state.hiddenOpen = false
             }
         }
     }

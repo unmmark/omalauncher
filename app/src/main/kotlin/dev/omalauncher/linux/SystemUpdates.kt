@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapObjects
+import dev.omalauncher.upgrade.strings
 import dev.omalauncher.upgrade.writeAtomically
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
@@ -66,7 +67,7 @@ class SystemUpdates(
         val data = Versioned.read(file.takeIf { it.exists() }?.readText(), VERSION) as? JSONObject ?: return
         pending =
             PendingUpdates(
-                packages = data.optJSONArray("packages")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
+                packages = data.optJSONArray("packages")?.strings().orEmpty(),
                 tools =
                     data.optJSONArray("tools")?.mapObjects { ToolUpdate(it.getString("name"), it.getString("current"), it.getString("latest")) }.orEmpty(),
                 checkedAt = data.optLong("checkedAt"),

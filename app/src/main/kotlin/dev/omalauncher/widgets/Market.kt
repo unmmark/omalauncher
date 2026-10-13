@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import dev.omalauncher.httpGet
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapEntries
+import dev.omalauncher.upgrade.strings
 import dev.omalauncher.upgrade.writeAtomically
 import dev.omalauncher.widgets.market.Catalog
 import dev.omalauncher.widgets.market.CatalogEntry
@@ -142,8 +143,6 @@ class Market(
             },
         )
     }
-
-    private fun JSONArray.strings() = (0 until length()).map { getString(it) }
 
     private fun save() {
         val data = JSONObject()

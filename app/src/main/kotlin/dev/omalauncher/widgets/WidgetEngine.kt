@@ -209,7 +209,7 @@ class WidgetEngine(
     }
 
     /** The widget file exists and shows in the profile showing. */
-    fun shownHere(fileName: String) = File(dir, fileName).exists() && !profiles.isHidden(fileName)
+    fun shownHere(fileName: String) = specs.any { it.file.name == fileName } && !profiles.isHidden(fileName)
 
     /**
      * Something is being added from the home screen on [page]: new, it shows only in the profile showing; one that
@@ -252,7 +252,7 @@ class WidgetEngine(
         when (profiles.arrive(key, shortcuts.has(key))) {
             Arrival.Reveal -> reveal(key, page)
             Arrival.New -> {
-                add(if (open) page * 2 - 1 else page)
+                add(if (open) foldedPageOf(page) else page)
                 if (open) profiles.setOpenPage(key, page)
             }
             Arrival.Present ->
@@ -296,7 +296,7 @@ class WidgetEngine(
         profiles.settle(listOf(item))
         when (item) {
             is WidgetItem -> {
-                profiles.folded.setPage(item.key, page)
+                setPage(item.key, page)
                 val i = specs.indexOfFirst { it.file.name == item.key }
                 if (i >= 0) specs[i] = specs[i].onPage(page)
             }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.omalauncher.upgrade.Versioned
+import dev.omalauncher.upgrade.strings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -25,13 +26,24 @@ data class Placed(
  */
 fun seedOpen(folded: List<Placed>): Map<String, Pair<Int, Cell?>> =
     folded.associate { p ->
-        val page = p.page.coerceAtLeast(1)
-        val right = page % 2 == 0
-        p.key to ((page + 1) / 2 to p.cell?.let { if (right) it.copy(x = it.x + GRID_COLUMNS) else it })
+        val right = p.page.coerceAtLeast(1) % 2 == 0
+        p.key to (openPageOf(p.page) to p.cell?.let { if (right) it.copy(x = it.x + GRID_COLUMNS) else it })
     }
 
 /** Home's two arrangements on a foldable: [Folded] (and on phones and tablets), [Open] on the inner screen. */
-enum class Profile { Folded, Open }
+enum class Profile {
+    Folded,
+    Open,
+    ;
+
+    val other get() = if (this == Open) Folded else Open
+}
+
+/** The open page folded page [page] pairs into: folded pages 2k-1 and 2k sit side by side on open page k. */
+fun openPageOf(page: Int) = (page.coerceAtLeast(1) + 1) / 2
+
+/** The first folded page of those open page [page] holds: its left half. */
+fun foldedPageOf(page: Int) = page * 2 - 1
 
 /** What adding something from the home screen comes to; see [HomeProfiles.arrive]. */
 enum class Arrival {
@@ -77,7 +89,7 @@ class HomeProfiles(
     init {
         (Versioned.read(prefs.getString(STATE, null), VERSION) as? JSONObject)?.let { data ->
             data.optJSONObject("hidden")?.let { h ->
-                for (p in Profile.entries) h.optJSONArray(p.name.lowercase())?.let { a -> for (i in 0 until a.length()) a.optString(i).ifEmpty { null }?.let(hidden.getValue(p)::add) }
+                for (p in Profile.entries) h.optJSONArray(p.name.lowercase())?.strings()?.let(hidden.getValue(p)::addAll)
             }
             seeded = data.optBoolean("seeded")
         }
@@ -123,10 +135,11 @@ class HomeProfiles(
     ) {
         for (l in layouts) {
             l.cell(from)?.let { l.set(to, it) }
-            l.page(from)?.let { l.setPage(to, it) }
+            l.page(from)?.let { l.setPage(to, it, persist = false) }
         }
         for (list in hidden.values) if (from in list && to !in list) list += to
         forget(from)
+        for (l in layouts) l.save()
     }
 
     /**
@@ -139,7 +152,7 @@ class HomeProfiles(
     ): Int {
         if (profile == Profile.Folded) return item.page
         openPages
-        return open.page(item.key) ?: ((item.page.coerceAtLeast(1) + 1) / 2)
+        return open.page(item.key) ?: openPageOf(item.page)
     }
 
     fun setOpenPage(
@@ -160,9 +173,8 @@ class HomeProfiles(
         existed: Boolean,
     ): Arrival {
         if (existed) return if (isHidden(key)) Arrival.Reveal else Arrival.Present
-        val other = if (active == Profile.Open) Profile.Folded else Profile.Open
         hidden.getValue(active).remove(key)
-        if (seeded && !isHidden(key, other)) hidden.getValue(other) += key
+        if (seeded && !isHidden(key, active.other)) hidden.getValue(active.other) += key
         save()
         return Arrival.New
     }
@@ -199,10 +211,13 @@ class HomeProfiles(
         var changed = false
         for (item in items) {
             if (open.page(item.key) != null) continue
-            open.setPage(item.key, pageIn(item, Profile.Open))
+            open.setPage(item.key, pageIn(item, Profile.Open), persist = false)
             changed = true
         }
-        if (changed) openPages++
+        if (changed) {
+            open.save()
+            openPages++
+        }
     }
 
     /**
@@ -212,8 +227,8 @@ class HomeProfiles(
     fun seed(foldedItems: List<Placed>) {
         if (seeded) return
         for ((key, place) in seedOpen(foldedItems)) {
-            open.setPage(key, place.first)
-            place.second?.let { open.set(key, it) } ?: open.clearCell(key)
+            open.setPage(key, place.first, persist = false)
+            place.second?.let { open.set(key, it) } ?: open.clearCell(key, persist = false)
         }
         open.save()
         for (key in hidden.getValue(Profile.Folded)) if (!isHidden(key, Profile.Open)) hidden.getValue(Profile.Open) += key
