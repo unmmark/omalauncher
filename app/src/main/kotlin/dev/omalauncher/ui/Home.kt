@@ -106,9 +106,14 @@ fun HomeScreen(
     var shownProfile by remember { mutableStateOf(profile) }
     // The page showing when a switch began; kept across a cancelled, retried scroll, which would otherwise read a later one.
     var switchFrom by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(profile, pageNumbers) {
+    LaunchedEffect(profile, listProfile, pageNumbers) {
+        // Back on the profile shown: any switch that was cancelled is over.
+        if (profile == shownProfile) {
+            switchFrom = null
+            return@LaunchedEffect
+        }
         // Wait for the page list of the profile now showing (switchTo has run); the earlier list is the old profile's.
-        if (profile == shownProfile || listProfile != profile) return@LaunchedEffect
+        if (listProfile != profile) return@LaunchedEffect
         val from = switchFrom ?: state.currentPage.also { switchFrom = it; lastPage[shownProfile] = it }
         val target = lastPage[profile] ?: if (profile == Profile.Open) (from + 1) / 2 else from
         state.editing = null
