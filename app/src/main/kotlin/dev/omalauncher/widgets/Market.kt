@@ -92,8 +92,8 @@ class Market(
             if (Review.sha256(bytes) != e.sha256) return "the download doesn't match the reviewed version; try again later"
             val name = installedVersion(e)?.file ?: fileFor(e)
             withContext(Dispatchers.IO) {
-                // An update keeps its page; a new install goes where the user is.
-                if (installedVersion(e) == null) engine.setPage(name, page)
+                // An update keeps its page; a new install goes where the user is, and one hidden here comes back.
+                engine.arrive(name, File(engine.dir, name).exists(), page)
                 engine.installDependenciesWhenLoaded(name)
                 File(engine.dir, name).writeBytes(bytes)
             }

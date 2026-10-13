@@ -10,10 +10,12 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import dev.omalauncher.AndroidApp
 import dev.omalauncher.BuildConfig
 import dev.omalauncher.LauncherData
 import dev.omalauncher.Runtime
 import dev.omalauncher.linux.Agent
+import dev.omalauncher.linux.LinuxApp
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.pacmanInstall
 import dev.omalauncher.linux.runJob
@@ -178,27 +180,115 @@ class WidgetEngine(
     /** The page on screen; widgets on it and its neighbours stay live, the rest pause. */
     var activePage by mutableIntStateOf(1)
 
+    /** Shows [profile]'s layout; the first unfold makes the open layout from the folded one. */
+    fun switchTo(profile: Profile) {
+        if (profiles.active == profile) return
+        if (profile == Profile.Open) profiles.seed(all().map { Placed(it.key, it.page, profiles.folded.cell(it.key)) })
+        profiles.active = profile
+    }
+
+    /** Takes [key] off the profile showing; the other keeps it, and it can come back from the hidden list. */
+    fun hide(key: String) = profiles.hide(key)
+
+    /** Brings [key] back to the profile showing, in the first free spot on [page]. */
+    fun reveal(
+        key: String,
+        page: Int,
+    ) {
+        profiles.unhide(key)
+        layout.clearCell(key)
+        all().firstOrNull { it.key == key }?.let { moveToPage(it, page) }
+    }
+
+    /** What the profile showing hides, in the order it was hidden. */
+    fun hiddenItems(): List<HomeItem> {
+        val byKey = all().associateBy { it.key }
+        return profiles.hiddenKeys().mapNotNull(byKey::get)
+    }
+
+    /** The widget file exists and shows in the profile showing. */
+    fun shownHere(fileName: String) = File(dir, fileName).exists() && !profiles.isHidden(fileName)
+
+    /**
+     * Something is being added from the home screen on [page]: new, it shows only in the profile showing; one that
+     * [existed] and is hidden here comes back instead of a second copy. Call before writing a new widget's file, so
+     * its page is set when it's first compiled.
+     */
+    suspend fun arrive(
+        key: String,
+        existed: Boolean,
+        page: Int,
+    ) = withContext(Dispatchers.Main) {
+        when (profiles.arrive(key, existed)) {
+            Arrival.New -> setPage(key, page)
+            Arrival.Reveal -> reveal(key, page)
+            Arrival.Present -> Unit
+        }
+    }
+
+    /** Pins an app from the drawer to [page] of the profile showing; see [arrive]. */
+    fun pinAndroid(
+        app: AndroidApp,
+        page: Int,
+    ) = pin(Shortcuts.androidKey(app), page) { p -> shortcuts.addAndroid(app, p) }
+
+    fun pinLinux(
+        app: LinuxApp,
+        page: Int,
+    ) = pin(Shortcuts.linuxKey(app), page) { p -> shortcuts.addLinux(app, p) }
+
+    /**
+     * Folded, pinning works as before profiles: new or not, the app lands on [page], out of its folder. Open, a new
+     * app goes on the folded page pairing into [page] (it's hidden there) and on [page] here; one hidden here comes back.
+     */
+    private fun pin(
+        key: String,
+        page: Int,
+        add: (Int) -> Unit,
+    ) {
+        val open = profiles.active == Profile.Open
+        when (profiles.arrive(key, shortcuts.has(key))) {
+            Arrival.Reveal -> reveal(key, page)
+            Arrival.New -> {
+                add(if (open) page * 2 - 1 else page)
+                if (open) profiles.setOpenPage(key, page)
+            }
+            Arrival.Present ->
+                if (open) {
+                    shortcuts.items.firstOrNull { it.key == key }?.let { shortcuts.move(key, it.page) }
+                    profiles.setOpenPage(key, page)
+                } else {
+                    add(page)
+                }
+        }
+    }
+
     /** Pages chosen on the phone override the file's own `page:`, so store installs land where you are without editing the file. */
     fun setPage(
         fileName: String,
         page: Int,
-    ) = layout.setPage(fileName, page)
+    ) = if (profiles.active == Profile.Open) profiles.setOpenPage(fileName, page) else profiles.folded.setPage(fileName, page)
 
     /** A widget with no room on its page moves to the next page with room at its size, or a new one after the last. Returns the page. */
     fun moveToFreePage(item: HomeItem): Int {
-        val page = pages.firstOrNull { it > item.page && layout.claim(item, itemsOn(it)) } ?: ((pages.maxOrNull() ?: 1) + 1)
+        val here = profiles.pageIn(item)
+        val page = pages.firstOrNull { it > here && layout.claim(item, itemsOn(it)) } ?: ((pages.maxOrNull() ?: 1) + 1)
         moveToPage(item, page)
         return page
     }
 
-    /** Puts [item] on [page]: a widget through its page override, a shortcut in place. */
+    /** Puts [item] on [page] of the profile showing: open, in its own page map; folded, a widget through its page override, a shortcut in place. */
     fun moveToPage(
         item: HomeItem,
         page: Int,
     ) {
+        if (profiles.active == Profile.Open) {
+            profiles.setOpenPage(item.key, page)
+            return
+        }
         when (item) {
             is WidgetItem -> {
-                setPage(item.key, page)
+                profiles.folded.setPage(item.key, page)
                 val i = specs.indexOfFirst { it.file.name == item.key }
                 if (i >= 0) specs[i] = specs[i].onPage(page)
             }
@@ -219,8 +309,8 @@ class WidgetEngine(
         return name !in bundledFiles && !name.startsWith("agent-") && !name.startsWith(TERMINAL_PREFIX) && !name.startsWith("shared-") && market.installed.values.none { it.file == name }
     }
 
-    /** [agent]'s terminal tile is on the home screen. */
-    fun hasAgentWidget(agent: Agent) = specs.any { it.file.name == agentWidgetFile(agent) }
+    /** [agent]'s terminal tile shows on the home screen in the profile showing. */
+    fun hasAgentWidget(agent: Agent) = specs.any { it.file.name == agentWidgetFile(agent) } && !profiles.isHidden(agentWidgetFile(agent))
 
     /** Adds a terminal tile running [agent] to [page]; see [agentWidget]. */
     suspend fun addAgentWidget(
@@ -228,7 +318,7 @@ class WidgetEngine(
         page: Int,
     ) = withContext(Dispatchers.IO) {
         val name = agentWidgetFile(agent)
-        setPage(name, page)
+        arrive(name, File(dir, name).exists(), page)
         File(dir, name).writeText(agentWidget(agent))
     }
 
@@ -239,7 +329,8 @@ class WidgetEngine(
     suspend fun addTerminalWidget(page: Int) =
         withContext(Dispatchers.IO) {
             val name = TERMINAL_PREFIX + System.currentTimeMillis().toString(36) + ".owl"
-            setPage(name, page)
+            // Always a new one, even with one hidden: terminals are each their own shell.
+            arrive(name, existed = false, page = page)
             File(dir, name).writeBytes(context.assets.open("widgets/$TERMINAL_ASSET").use { it.readBytes() })
         }
 
@@ -255,7 +346,7 @@ class WidgetEngine(
         page: Int,
     ) = withContext(Dispatchers.IO) {
         val name = shared.fileName
-        if (!File(dir, name).exists()) setPage(name, page)
+        arrive(name, File(dir, name).exists(), page)
         installDependenciesWhenLoaded(name)
         File(dir, name).writeText(shared.text)
     }
@@ -286,7 +377,7 @@ class WidgetEngine(
 
     /** A widget file that's gone takes its place, page and saved values along, so a new file of that name starts fresh. */
     private fun forget(fileName: String) {
-        layout.remove(fileName)
+        profiles.forget(fileName)
         File(stateDir, "$fileName.json").delete()
         hashes.remove(fileName)
         File(checkDir, "$fileName.txt").delete()
@@ -294,11 +385,14 @@ class WidgetEngine(
         File(previewDir, "$fileName.screen.png").delete()
     }
 
-    /** Widgets, pinned apps and folders on [page]. Wrappers compare by spec, so unchanged pages skip recomposition. */
-    fun itemsOn(page: Int): List<HomeItem> = specs.filter { it.page == page }.map(::WidgetItem) + shortcuts.onGrid().filter { it.page == page }
+    /** Widgets, pinned apps and folders, whichever profile shows them. */
+    private fun all(): List<HomeItem> = specs.map(::WidgetItem) + shortcuts.onGrid()
+
+    /** Widgets, pinned apps and folders on [page] of the profile showing. Wrappers compare by spec, so unchanged pages skip recomposition. */
+    fun itemsOn(page: Int): List<HomeItem> = all().filter { !profiles.isHidden(it.key) && profiles.pageIn(it) == page }
 
     private val pageList by derivedStateOf {
-        (specs.map { it.page } + shortcuts.onGrid().map { it.page }).distinct().sorted().ifEmpty { listOf(1) }
+        all().filterNot { profiles.isHidden(it.key) }.map { profiles.pageIn(it) }.distinct().sorted().ifEmpty { listOf(1) }
     }
 
     val pages: List<Int> get() = pageList
@@ -560,9 +654,10 @@ class WidgetEngine(
         if (!visible) return false
         // Its screen is open: it's on screen wherever the pages are.
         if (spec.file.name == openScreen) return true
+        if (profiles.isHidden(spec.file.name)) return false
         val pages = pages
         val here = pages.indexOf(activePage)
-        val there = pages.indexOf(spec.page)
+        val there = pages.indexOf(profiles.pageIn(WidgetItem(spec)))
         return here < 0 || there < 0 || kotlin.math.abs(here - there) <= 1
     }
 
@@ -579,7 +674,7 @@ class WidgetEngine(
             val p = Compiler.compile(text)
             writeError(file, null)
             writeCheck(file, hash, "ok")
-            WidgetSpec(file, p.name, layout.page(file.name) ?: p.page, p.order, p, null, p.size, p.minSize, stamp)
+            WidgetSpec(file, p.name, profiles.folded.page(file.name) ?: p.page, p.order, p, null, p.size, p.minSize, stamp)
         } catch (e: CompileError) {
             broken(file, previous, stamp, Source(text).format(e), hash)
         } catch (e: RuntimeException) {
