@@ -1,7 +1,7 @@
 package dev.omalauncher.widgets
 
 import android.content.ComponentName
-import android.content.Context
+import android.content.SharedPreferences
 import dev.omalauncher.AndroidApp
 import androidx.compose.runtime.mutableStateListOf
 import dev.omalauncher.linux.LinuxApp
@@ -70,10 +70,9 @@ private data class FolderEntry(
  * still reads its apps (each back on the grid on its own).
  */
 class Shortcuts(
-    context: Context,
-    private val layout: WidgetLayout,
+    private val prefs: SharedPreferences,
+    private val profiles: HomeProfiles,
 ) {
-    private val prefs = context.getSharedPreferences("shortcuts", Context.MODE_PRIVATE)
     val items = mutableStateListOf<Shortcut>()
     private val folderEntries = mutableStateListOf<FolderEntry>()
 
@@ -110,8 +109,7 @@ class Shortcuts(
                 is Shortcut -> {
                     val key = "folder:" + System.currentTimeMillis().toString(36)
                     folderEntries += FolderEntry(key, target.page)
-                    layout.cell(target.key)?.let { layout.set(key, it) }
-                    layout.remove(target.key)
+                    profiles.inherit(from = target.key, to = key)
                     setFolder(target.key, key, target.page)
                     key
                 }
@@ -119,7 +117,7 @@ class Shortcuts(
             }
         if (folder == app.folder) return folder
         val page = folderEntries.first { it.key == folder }.page
-        layout.remove(app.key)
+        profiles.forget(app.key)
         setFolder(app.key, folder, page)
         tidy()
         save()
@@ -163,13 +161,14 @@ class Shortcuts(
         for (f in folderEntries.toList()) {
             val apps = items.filter { it.folder == f.key }
             if (apps.size >= 2) continue
-            layout.save()
-            apps.firstOrNull()?.let { app ->
-                if (layout.cell(app.key) == null) layout.cell(f.key)?.let { layout.set(app.key, it) }
+            val app = apps.firstOrNull()
+            if (app != null) {
+                profiles.inherit(from = f.key, to = app.key)
                 setFolder(app.key, null, f.page)
+            } else {
+                profiles.forget(f.key)
             }
             folderEntries.remove(f)
-            layout.remove(f.key)
         }
     }
 
@@ -199,12 +198,15 @@ class Shortcuts(
     fun addAndroid(
         app: AndroidApp,
         page: Int,
-    ) = add(Shortcut("app:" + app.key, page, app.label, component = app.component, profile = app.profile))
+    ) = add(Shortcut(androidKey(app), page, app.label, component = app.component, profile = app.profile))
 
     fun addLinux(
         app: LinuxApp,
         page: Int,
-    ) = add(Shortcut("linux:" + app.id, page, app.name, linux = app))
+    ) = add(Shortcut(linuxKey(app), page, app.name, linux = app))
+
+    /** [key] is pinned, on the grid or in a folder. */
+    fun has(key: String) = items.any { it.key == key }
 
     /** Pinning an app that's already on the home screen moves it to [Shortcut.page], out of its folder. */
     private fun add(shortcut: Shortcut) {
@@ -235,10 +237,11 @@ class Shortcuts(
     /** Takes an app, or a folder with all its apps, off the home screen. */
     fun remove(key: String) {
         if (folderEntries.removeAll { it.key == key }) {
-            items.filter { it.folder == key }.forEach { layout.remove(it.key) }
+            items.filter { it.folder == key }.forEach { profiles.forget(it.key) }
             items.removeAll { it.folder == key }
         }
         items.removeAll { it.key == key }
+        profiles.forget(key)
         tidy()
         save()
     }
@@ -278,9 +281,13 @@ class Shortcuts(
             .apply()
     }
 
-    private companion object {
-        const val ITEMS = "items"
-        const val FOLDERS = "folders"
-        const val VERSION = 1
+    companion object {
+        fun androidKey(app: AndroidApp) = "app:" + app.key
+
+        fun linuxKey(app: LinuxApp) = "linux:" + app.id
+
+        private const val ITEMS = "items"
+        private const val FOLDERS = "folders"
+        private const val VERSION = 1
     }
 }

@@ -91,8 +91,11 @@ class WidgetEngine(
     private val stateDir = File(context.filesDir, "widget-state")
     val specs = mutableStateListOf<WidgetSpec>()
     private val instances = HashMap<String, WidgetInstance>()
-    val layout = WidgetLayout.folded(context)
-    val shortcuts = Shortcuts(context, layout)
+    val profiles = HomeProfiles.of(context)
+
+    /** The layout showing: folded, or open on a foldable's inner screen. */
+    val layout get() = profiles.layout
+    val shortcuts = Shortcuts(context.getSharedPreferences("shortcuts", Context.MODE_PRIVATE), profiles)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val services = WidgetServices(context, proot, runtime, scope)
 
