@@ -377,7 +377,8 @@ internal fun HomeGrid(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                // Restarts when a fold or unfold switches layouts: the handler keeps the layout and items it started with.
+                .pointerInput(layout, itemsOn) {
                     /**
                      * Follows the finger, carrying [item] from [cell] on page [from]; returns whether it moved.
                      * [origin] is where the tile is on screen: its cell, or for an app lifted out of a folder,
