@@ -1,6 +1,7 @@
 package dev.omalauncher.widgets
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateMapOf
 import dev.omalauncher.upgrade.Versioned
 import dev.omalauncher.upgrade.mapEntries
@@ -22,22 +23,25 @@ data class Cell(
 /** Columns of the home grid. Saved with the layout, so changing it rescales saved cells rather than scrambling them. */
 const val GRID_COLUMNS = 6
 
+/** Columns of the home grid on a foldable's inner screen: two folded grids side by side, so a tile can span the hinge. */
+const val OPEN_COLUMNS = 12
+
 /**
  * Where each widget and pinned app sits on the home grid, keyed by file name
  * (or shortcut key), and the page a widget was moved to on the phone. Kept on
  * the launcher side so rearranging never rewrites the widget files agents own.
  */
 class WidgetLayout(
-    context: Context,
+    private val prefs: SharedPreferences,
+    /** [GRID_COLUMNS] folded (and on phones and tablets), [OPEN_COLUMNS] on a foldable's inner screen. */
+    val columns: Int = GRID_COLUMNS,
 ) {
-    private val prefs = context.getSharedPreferences("widget_grid", Context.MODE_PRIVATE)
     private val cells = mutableStateMapOf<String, Cell>()
     /** Read while compiling widgets, off the main thread. */
     private val pages = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     init {
         (Versioned.read(prefs.getString(LAYOUT, null), VERSION) as? JSONObject)?.let(::load)
-        migrateLegacy(context)
     }
 
     private fun load(data: JSONObject) {
@@ -67,9 +71,9 @@ class WidgetLayout(
         c: Cell,
         columns: Int,
     ): Cell {
-        if (columns == GRID_COLUMNS || columns <= 0) return c
-        val x = c.x * GRID_COLUMNS / columns
-        return c.copy(x = x, w = (c.w * GRID_COLUMNS / columns).coerceIn(1, GRID_COLUMNS - x))
+        if (columns == this.columns || columns <= 0) return c
+        val x = c.x * this.columns / columns
+        return c.copy(x = x, w = (c.w * this.columns / columns).coerceIn(1, this.columns - x))
     }
 
     /** The page [name] was moved to on the phone, if it was. */
@@ -176,6 +180,11 @@ class WidgetLayout(
         return null
     }
 
+    /** Drops [name]'s cell but keeps its page, so it's placed afresh in the first free spot there. */
+    fun clearCell(name: String) {
+        if (cells.remove(name) != null) save()
+    }
+
     /** Forgets everything about [name]: its cell and page. */
     fun remove(name: String) {
         cells.remove(name)
@@ -197,7 +206,7 @@ class WidgetLayout(
         val (cellW, cellH, gap) =
             geometry ?: run {
                 val gap = Math.round(6 * metrics.density)
-                val cell = (metrics.widthPixels - gap) / GRID_COLUMNS.toFloat()
+                val cell = (metrics.widthPixels - gap) / columns.toFloat()
                 Triple(cell, cell, gap)
             }
         val (across, down) = if (turned) cells.second to cells.first else cells
@@ -209,17 +218,24 @@ class WidgetLayout(
         for ((name, c) in cells) json.put(name, JSONObject().put("x", c.x).put("y", c.y).put("w", c.w).put("h", c.h))
         val data =
             JSONObject()
-                .put("columns", GRID_COLUMNS)
+                .put("columns", columns)
                 .put("cells", json)
                 .put("pages", JSONObject(pages as Map<*, *>))
         prefs.edit().putString(LAYOUT, Versioned.write(VERSION, data)).apply()
     }
 
-    private companion object {
-        const val LAYOUT = "layout"
-        const val VERSION = 1
-        const val LEGACY_CELLS = "cells"
-        const val PORTRAIT_ROWS = "portrait_rows_"
-        const val LEGACY_PAGES = "widget_pages"
+    companion object {
+        /** Folded, and on phones and tablets: where launchers before profiles kept everything. */
+        fun folded(context: Context) =
+            WidgetLayout(context.getSharedPreferences("widget_grid", Context.MODE_PRIVATE)).also { it.migrateLegacy(context) }
+
+        /** A foldable's inner screen. */
+        fun open(context: Context) = WidgetLayout(context.getSharedPreferences("widget_grid_open", Context.MODE_PRIVATE), OPEN_COLUMNS)
+
+        private const val LAYOUT = "layout"
+        private const val VERSION = 1
+        private const val LEGACY_CELLS = "cells"
+        private const val PORTRAIT_ROWS = "portrait_rows_"
+        private const val LEGACY_PAGES = "widget_pages"
     }
 }
