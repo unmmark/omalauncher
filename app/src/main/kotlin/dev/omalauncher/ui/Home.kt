@@ -2,7 +2,8 @@ package dev.omalauncher.ui
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
+import dev.omalauncher.widgets.Profile
 import androidx.compose.ui.platform.LocalWindowInfo
 import android.app.WallpaperManager
 import androidx.activity.compose.BackHandler
@@ -63,20 +64,20 @@ fun HomeScreen(
     val engine = runtime.widgets
     val linuxState by runtime.bootstrap.state.collectAsState()
     val arrange = remember { Arrange() }
+    // Unfolded, home has its own layout, one wide page across the inner screen; see HomeProfiles.
+    val profile = if (showsTwoPages(LocalWindowInfo.current.containerSize)) Profile.Open else Profile.Folded
+    SideEffect { engine.switchTo(profile) }
     // One empty page always waits after the last one, to drop tiles on or pin apps to. Pages only exist
     // while they hold something, so it becomes a real page once used and a new empty one follows.
-    // Unfolded, pages show in pairs: the pager counts pairs, and an odd last page gets an empty partner.
-    val per = if (showsTwoPages(LocalWindowInfo.current.containerSize)) 2 else 1
     val pageNumbers =
         engine.pages
             .let { if (engine.itemsOn(it.last()).isEmpty()) it else it + (it.last() + 1) }
-            .let { if (it.size % per == 0) it else it + (it.last() + 1) }
-    val pager = rememberPagerState { pageNumbers.size / per }
+    val pager = rememberPagerState { pageNumbers.size }
     // A tile dropped on another page: show that page once the page list has caught up.
     var showPage by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(showPage, pageNumbers) {
         val i = showPage?.let(pageNumbers::indexOf) ?: return@LaunchedEffect
-        if (i >= 0) pager.scrollToPage(i / per)
+        if (i >= 0) pager.scrollToPage(i)
         showPage = null
     }
     var menuFor by remember { mutableStateOf<HomeItem?>(null) }
@@ -98,17 +99,22 @@ fun HomeScreen(
             }
         }
     }
-    // Folding or unfolding keeps the page that was showing: unfolded, the pair it's in; folded, the left one of the pair.
-    var shownPer by remember { mutableIntStateOf(per) }
-    LaunchedEffect(per) {
-        if (per == shownPer) return@LaunchedEffect
-        val i = pageNumbers.indexOf(state.currentPage)
-        shownPer = per
-        if (i >= 0) pager.scrollToPage(i / per)
+    // Each profile has its own pages: folding or unfolding goes back to the page last shown there (the first
+    // unfold, to the open page the folded one pairs into). Editing and an open folder end, as their tile may be elsewhere.
+    val lastPage = remember { mutableMapOf<Profile, Int>() }
+    var shownProfile by remember { mutableStateOf(profile) }
+    LaunchedEffect(profile, pageNumbers) {
+        if (profile == shownProfile || engine.profiles.active != profile) return@LaunchedEffect
+        lastPage[shownProfile] = state.currentPage
+        val target = lastPage[profile] ?: if (profile == Profile.Open) (state.currentPage + 1) / 2 else state.currentPage
+        shownProfile = profile
+        state.editing = null
+        arrange.folder = null
+        pager.scrollToPage(pageNumbers.indexOf(target).coerceAtLeast(0))
     }
     // The drawer pins apps to whichever page is showing (the left one of a pair).
     LaunchedEffect(pager.currentPage, pageNumbers) {
-        state.currentPage = pageNumbers.getOrElse(pager.currentPage * per) { 1 }
+        state.currentPage = pageNumbers.getOrElse(pager.currentPage) { 1 }
         engine.activePage = state.currentPage
     }
     // The background slides with the pages, like stock launchers. Our live wallpaper gets it through Android.
@@ -140,7 +146,7 @@ fun HomeScreen(
     val typing = terminals.active != null
     LaunchedEffect(typing) { if (!typing) terminals.keyboard?.hide() }
     LaunchedEffect(state.requestedPage) {
-        state.requestedPage?.let { if (it < pageNumbers.size) pager.animateScrollToPage(it / per) }
+        state.requestedPage?.let { if (it < pageNumbers.size) pager.animateScrollToPage(it) }
         state.requestedPage = null
     }
 
@@ -156,6 +162,12 @@ fun HomeScreen(
             is Shortcut, is Folder -> engine.shortcuts.remove(item.key)
         }
         engine.profiles.forget(item.key)
+    }
+
+    /** Off this profile's home only; it can come back from the home menu's hidden list. */
+    fun hide(item: HomeItem) {
+        state.editing = null
+        engine.hide(item.key)
     }
 
     /** Opens the default agent on the widget's file; with no agent installed, the agents screen instead. */
@@ -269,6 +281,7 @@ fun HomeScreen(
                             state.sharing = item.spec
                         }
                     }
+                    EditAction("hide") { hide(item) }
                     EditAction("remove", Palette.red) { remove(item) }
                 }
             },
@@ -337,7 +350,6 @@ fun HomeScreen(
             room = if (LauncherStyle.recentApps && side == null) RecentStripHeight else 0.dp,
             turned = turned,
             side = side,
-            per = per,
             onLongPressEmpty = { openMenu(null) },
             onNoRoom = { item -> showPage = engine.moveToFreePage(item) },
             onMove = { item, page ->

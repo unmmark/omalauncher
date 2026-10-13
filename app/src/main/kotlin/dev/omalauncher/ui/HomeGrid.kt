@@ -86,15 +86,15 @@ private class Grid(
     portraitRows: Int? = null,
     used: Int = 0,
     val per: Int = 1,
+    val cols: Int = GRID_COLUMNS,
 ) {
-    val cols = GRID_COLUMNS
     val height = height
 
     /** The room the cells share across and down: a cell is a tile and the gap after it, so the last gap is the pad's. */
     private val across = width - pad.left - pad.right + gap
     private val down = height - pad.top - pad.bottom + gap
 
-    val rows = maxOf(if (turned) portraitRows ?: squareRows(down, across) else squareRows(across, down), used)
+    val rows = maxOf(if (turned) portraitRows ?: squareRows(down, across, cols) else squareRows(across, down, cols), used)
 
     /** A screen cell's width and height, the gap after it included. */
     val cellW = across / (if (turned) rows else cols).toFloat()
@@ -164,17 +164,18 @@ private class Grid(
 }
 
 /**
- * How many rows of square-ish cells fit [long] beside [GRID_COLUMNS] of them across [short]. A window narrower than
- * the gaps around it leaves no room across: one row then, and never more than [MAX_SQUARE_ROWS], or a sliver would
- * make millions of them.
+ * How many rows of square-ish cells fit [long] beside [cols] of them across [short]. A window narrower than
+ * the gaps around it leaves no room across: one row then, and never more than [MAX_ROWS_PER_COLUMN] times [cols],
+ * or a sliver would make millions of them.
  */
 private fun squareRows(
     short: Int,
     long: Int,
-) = if (short <= 0) 1 else (long / (short / GRID_COLUMNS.toFloat())).toInt().coerceIn(1, MAX_SQUARE_ROWS)
+    cols: Int,
+) = if (short <= 0) 1 else (long / (short / cols.toFloat())).toInt().coerceIn(1, MAX_ROWS_PER_COLUMN * cols)
 
-/** Cells four times as tall as wide: far past any phone's shape (20:9 makes 13 rows). */
-private const val MAX_SQUARE_ROWS = 4 * GRID_COLUMNS
+/** Cells four times as tall as wide: far past any phone's shape (20:9 makes 13 rows of 6). */
+private const val MAX_ROWS_PER_COLUMN = 4
 
 /** Room around a page's tiles, in pixels; see [Grid]. */
 @Immutable
@@ -334,9 +335,9 @@ internal fun HomeGrid(
             derivedStateOf { pages.flatMap(itemsOn).maxOfOrNull { item -> layout.cell(item.key)?.let { if (item.resizable) it.bottom else it.y + 1 } ?: 0 } ?: 0 }
         }
         val grid =
-            remember(width, height, gap, pad, turned, windowSize, used, per) {
+            remember(width, height, gap, pad, turned, windowSize, used, per, layout.columns) {
                 // Not seen in portrait yet: square cells across.
-                Grid(width, height, gap, pad, turned, if (turned) layout.portraitRows(windowSize) else null, used, per)
+                Grid(width, height, gap, pad, turned, if (turned) layout.portraitRows(windowSize) else null, used, per, layout.columns)
             }
         if (!turned) SideEffect { layout.setPortraitRows(windowSize, grid.rows) }
         // Previews draw tiles at the size they have here.
