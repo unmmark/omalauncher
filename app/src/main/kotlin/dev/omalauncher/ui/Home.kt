@@ -86,6 +86,7 @@ fun HomeScreen(
     val terminals = runtime.terminals
     BackHandler(enabled = terminals.active != null) { terminals.deactivate() }
     BackHandler(enabled = state.homeMenuOpen) { state.homeMenuOpen = false }
+    BackHandler(enabled = state.hiddenOpen) { state.hiddenOpen = false }
     BackHandler(enabled = state.editing != null && !state.homeMenuOpen) { state.editing = null }
     BackHandler(enabled = arrange.folder != null && !state.homeMenuOpen) { arrange.folder = null }
     LaunchedEffect(engine) {
