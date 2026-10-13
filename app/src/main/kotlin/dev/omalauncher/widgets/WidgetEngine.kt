@@ -180,12 +180,14 @@ class WidgetEngine(
     /** The page on screen; widgets on it and its neighbours stay live, the rest pause. */
     var activePage by mutableIntStateOf(1)
 
-    /** Shows [profile]'s layout; the first unfold makes the open layout from the folded one. */
+    /** Shows [profile]'s layout; the first unfold makes the open layout from the folded one, once the widgets have loaded. */
     fun switchTo(profile: Profile) {
         if (profiles.active == profile) return
-        if (profile == Profile.Open) profiles.seed(all().map { Placed(it.key, it.page, profiles.folded.cell(it.key)) })
-        profiles.active = profile
+        profiles.show(profile, loaded, ::placedFolded)
     }
+
+    /** Everything on home, where it sits folded: what the open layout is first made from. */
+    private fun placedFolded() = all().map { Placed(it.key, it.page, profiles.folded.cell(it.key)) }
 
     /** Takes [key] off the profile showing; the other keeps it, and it can come back from the hidden list. */
     fun hide(key: String) = profiles.hide(key)
@@ -255,9 +257,9 @@ class WidgetEngine(
             }
             Arrival.Present ->
                 if (open) {
-                    shortcuts.items.firstOrNull { it.key == key }?.let { shortcuts.move(key, it.page) }
-                    profiles.setOpenPage(key, page)
+                    shortcuts.moveOpen(key, page)
                 } else {
+                    profiles.settle(all().filter { it.key == key })
                     add(page)
                 }
         }
@@ -286,9 +288,12 @@ class WidgetEngine(
         page: Int,
     ) {
         if (profiles.active == Profile.Open) {
-            profiles.setOpenPage(item.key, page)
+            // An app dragged out of its folder leaves it, in both profiles: folders are shared.
+            if (item is Shortcut) shortcuts.moveOpen(item.key, page) else profiles.setOpenPage(item.key, page)
             return
         }
+        // Its open page stays where it is, wherever it goes folded.
+        profiles.settle(listOf(item))
         when (item) {
             is WidgetItem -> {
                 profiles.folded.setPage(item.key, page)
@@ -391,8 +396,11 @@ class WidgetEngine(
     /** Widgets, pinned apps and folders, whichever profile shows them. */
     private fun all(): List<HomeItem> = specs.map(::WidgetItem) + shortcuts.onGrid()
 
-    /** Widgets, pinned apps and folders on [page] of the profile showing. Wrappers compare by spec, so unchanged pages skip recomposition. */
-    fun itemsOn(page: Int): List<HomeItem> = all().filter { !profiles.isHidden(it.key) && profiles.pageIn(it) == page }
+    /** Widgets, pinned apps and folders on [page] of [profile]. Wrappers compare by spec, so unchanged pages skip recomposition. */
+    fun itemsOn(
+        page: Int,
+        profile: Profile = profiles.active,
+    ): List<HomeItem> = all().filter { !profiles.isHidden(it.key, profile) && profiles.pageIn(it, profile) == page }
 
     private val pageList by derivedStateOf {
         all().filterNot { profiles.isHidden(it.key) }.map { profiles.pageIn(it) }.distinct().sorted().ifEmpty { listOf(1) }
@@ -530,6 +538,9 @@ class WidgetEngine(
         // Not at startup, when every file compiles: only what changed while the launcher runs, which is an agent at work.
         if (loaded) changed.forEach(::requestPreview)
         loaded = true
+        // Started unfolded, the open layout waited for the widgets; files that appeared since the first unfold get their open page.
+        profiles.catchUp(true, ::placedFolded)
+        profiles.settle(all())
     }
 
     /**

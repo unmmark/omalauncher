@@ -167,12 +167,53 @@ class HomeProfiles(
         return Arrival.New
     }
 
-    /** The first unfold: the open layout starts as home looked there before, folded pages side by side; see [seedOpen]. */
+    /**
+     * Shows [profile]. The first unfold makes the open layout from the folded one ([seed]), but only once
+     * everything home holds has loaded ([ready]): a launcher started unfolded shows before its widgets are read,
+     * and seeding then would leave them out for good. Until then, [catchUp] seeds once they're in.
+     */
+    fun show(
+        profile: Profile,
+        ready: Boolean,
+        folded: () -> List<Placed>,
+    ) {
+        active = profile
+        catchUp(ready, folded)
+    }
+
+    /** Seeds the open layout if it's showing, not made yet, and everything has loaded ([ready]); see [show]. */
+    fun catchUp(
+        ready: Boolean,
+        folded: () -> List<Placed>,
+    ) {
+        if (ready && active == Profile.Open && !seeded) seed(folded())
+    }
+
+    /**
+     * Once the open layout exists, each of [items] without an open page of its own gets the one it shows on now,
+     * the open page its folded page pairs into: something that arrived some other way (an agent wrote a widget
+     * file) then stays put open when it's moved folded, as the two layouts go their own ways after [seed].
+     */
+    fun settle(items: List<HomeItem>) {
+        if (!seeded) return
+        var changed = false
+        for (item in items) {
+            if (open.page(item.key) != null) continue
+            open.setPage(item.key, pageIn(item, Profile.Open))
+            changed = true
+        }
+        if (changed) openPages++
+    }
+
+    /**
+     * The first unfold: the open layout starts as home looked there before, folded pages side by side; see [seedOpen].
+     * Anything the open grid placed on its own before this (it shows while widgets load) starts over from the folded place.
+     */
     fun seed(foldedItems: List<Placed>) {
         if (seeded) return
         for ((key, place) in seedOpen(foldedItems)) {
             open.setPage(key, place.first)
-            place.second?.let { open.set(key, it) }
+            place.second?.let { open.set(key, it) } ?: open.clearCell(key)
         }
         open.save()
         for (key in hidden.getValue(Profile.Folded)) if (!isHidden(key, Profile.Open)) hidden.getValue(Profile.Open) += key

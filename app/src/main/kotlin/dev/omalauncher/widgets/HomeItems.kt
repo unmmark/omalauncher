@@ -155,7 +155,7 @@ class Shortcuts(
 
     /**
      * A folder of fewer than two apps goes away, like on stock Android: the app
-     * left takes its cell, unless it already has one of its own.
+     * left takes its cell, open page and hidden marks in both profiles (see [HomeProfiles.inherit]).
      */
     private fun tidy() {
         for (f in folderEntries.toList()) {
@@ -232,6 +232,18 @@ class Shortcuts(
             tidy()
         }
         save()
+    }
+
+    /**
+     * Puts an app or folder on [page] of the open layout. An app in a folder leaves it first, in both profiles
+     * (folders are shared), keeping its folded page; a folder left with one app dissolves into it.
+     */
+    fun moveOpen(
+        key: String,
+        page: Int,
+    ) {
+        items.firstOrNull { it.key == key && it.folder != null }?.let { move(key, it.page) }
+        profiles.setOpenPage(key, page)
     }
 
     /** Takes an app, or a folder with all its apps, off the home screen. */

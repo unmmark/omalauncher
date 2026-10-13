@@ -131,4 +131,81 @@ class HomeProfilesTest {
         p.setOpenPage("a.owl", 3)
         assertEquals(before, foldedPrefs.values)
     }
+
+    @Test fun seedingWaitsForEverythingToLoad() {
+        val p = profiles()
+        val items = mutableListOf(Placed("app:a", 1, Cell(0, 0, 1, 1)))
+        // Started unfolded: home shows before the widget files are read.
+        p.show(Profile.Open, ready = false) { items }
+        assertFalse(p.seeded)
+        // The open grid placed the app on its own meanwhile.
+        p.open.set("app:a", Cell(3, 3, 1, 1))
+        items += Placed("w.owl", 2, Cell(0, 0, 3, 2))
+        items += Placed("unplaced.owl", 1, null)
+        p.open.set("unplaced.owl", Cell(5, 5, 1, 1))
+        p.catchUp(ready = true) { items }
+        assertTrue(p.seeded)
+        assertEquals(Cell(0, 0, 1, 1), p.open.cell("app:a"))
+        assertEquals(Cell(6, 0, 3, 2), p.open.cell("w.owl"))
+        assertEquals(1, p.open.page("w.owl"))
+        assertNull(p.open.cell("unplaced.owl"))
+    }
+
+    @Test fun seedingWaitsWhileFolded() {
+        val p = profiles()
+        p.show(Profile.Folded, ready = true) { listOf(Placed("a.owl", 1, null)) }
+        assertFalse(p.seeded)
+        p.show(Profile.Open, ready = true) { listOf(Placed("a.owl", 1, null)) }
+        assertTrue(p.seeded)
+        assertEquals(Profile.Open, p.active)
+    }
+
+    @Test fun settlingPinsTheOpenPageSoFoldedMovesStayFolded() {
+        val p = profiles()
+        val before = widget("agent.owl", 2, 2, page = 3)
+        // Before the first unfold nothing is pinned: seeding does that.
+        p.settle(listOf(before))
+        assertNull(p.open.page("agent.owl"))
+        p.seed(emptyList())
+        p.settle(listOf(before))
+        assertEquals(2, p.open.page("agent.owl"))
+        // Moved folded to page 7: still on open page 2.
+        assertEquals(2, p.pageIn(widget("agent.owl", 2, 2, page = 7), Profile.Open))
+        // One with its own open page keeps it.
+        p.setOpenPage("agent.owl", 4)
+        p.settle(listOf(widget("agent.owl", 2, 2, page = 1)))
+        assertEquals(4, p.open.page("agent.owl"))
+    }
+
+    @Test fun everythingSurvivesARestart() {
+        val p = profiles()
+        p.folded.set("a.owl", Cell(0, 0, 2, 2))
+        p.folded.setPage("a.owl", 2)
+        p.hide("h.owl", Profile.Folded)
+        p.seed(listOf(Placed("a.owl", 2, Cell(0, 0, 2, 2)), Placed("app:x", 1, Cell(1, 1, 1, 1))))
+        p.active = Profile.Open
+        p.hide("gone.owl")
+        p.hide("back.owl")
+        p.unhide("back.owl")
+        p.open.set("app:x", Cell(8, 1, 1, 1))
+        p.setOpenPage("app:x", 3)
+        p.inherit(from = "app:x", to = "folder:f")
+        p.setOpenPage("a.owl", 2)
+        p.open.save()
+        p.folded.save()
+
+        val again = profiles()
+        assertTrue(again.seeded)
+        assertEquals(Cell(0, 0, 2, 2), again.folded.cell("a.owl"))
+        assertEquals(2, again.folded.page("a.owl"))
+        assertEquals(Cell(6, 0, 2, 2), again.open.cell("a.owl"))
+        assertEquals(2, again.open.page("a.owl"))
+        assertEquals(Cell(8, 1, 1, 1), again.open.cell("folder:f"))
+        assertEquals(3, again.open.page("folder:f"))
+        assertNull(again.open.cell("app:x"))
+        assertNull(again.open.page("app:x"))
+        assertEquals(listOf("h.owl"), again.hiddenKeys(Profile.Folded))
+        assertEquals(listOf("h.owl", "gone.owl"), again.hiddenKeys(Profile.Open))
+        assertEquals(OPEN_COLUMNS, again.open.columns)
+    }
 }
