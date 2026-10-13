@@ -408,6 +408,7 @@ private fun Detail(
         when {
             busy != null -> BasicText(busy, style = Mono.copy(color = Palette.accent))
             !e.supported -> BasicText("needs a newer launcher (owl ${e.owl}); update the launcher to install it", style = Mono.copy(color = Palette.red, fontSize = TextSize.Small))
+            // Before "show on page": one hidden here with an update gets it, and comes back with it (Market.install).
             update -> BracketAction("update ${installed?.version} → ${e.version}", Palette.accent, onInstall)
             installed != null && !shown -> BracketAction("show on page $page", Palette.accent, onShow)
             installed != null -> BasicText("✓ on your home screen", style = Mono.copy(color = Palette.green))

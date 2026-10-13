@@ -29,13 +29,13 @@ class FakePrefs : SharedPreferences {
 
     override fun unregisterOnSharedPreferenceChangeListener(l: SharedPreferences.OnSharedPreferenceChangeListener?) {}
 
+    /** Like Android's: changes keyed by name, so the last put or remove of a key wins; clear() goes first. */
     private inner class Editor : SharedPreferences.Editor {
-        private val puts = HashMap<String, Any?>()
-        private val removes = HashSet<String>()
+        private val changes = HashMap<String, Any?>()
         private var clearAll = false
 
         private fun put(key: String, value: Any?): SharedPreferences.Editor {
-            puts[key] = value
+            changes[key] = value
             return this
         }
 
@@ -51,10 +51,8 @@ class FakePrefs : SharedPreferences {
 
         override fun putBoolean(key: String, value: Boolean) = put(key, value)
 
-        override fun remove(key: String): SharedPreferences.Editor {
-            removes += key
-            return this
-        }
+        // A null value removes, as in Android, where putString(key, null) does too.
+        override fun remove(key: String) = put(key, null)
 
         override fun clear(): SharedPreferences.Editor {
             clearAll = true
@@ -68,8 +66,7 @@ class FakePrefs : SharedPreferences {
 
         override fun apply() {
             if (clearAll) values.clear()
-            removes.forEach(values::remove)
-            values.putAll(puts)
+            for ((k, v) in changes) if (v == null) values.remove(k) else values[k] = v
         }
     }
 }

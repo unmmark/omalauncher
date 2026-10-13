@@ -81,7 +81,11 @@ class Market(
     /** An update runs different commands or needs other packages than what the user approved. */
     fun changedSinceApproval(e: CatalogEntry) = installedVersion(e)?.let { it.commands != e.commands || it.requires != e.requires } == true
 
-    /** Downloads, verifies and installs [e] on [page]; its packages install right after. Returns an error, or null. */
+    /**
+     * Downloads, verifies and installs [e] on [page]; its packages install right after. Returns an error, or null.
+     * An update of a widget hidden in the profile showing also brings it back there, on [page] (see
+     * [WidgetEngine.arrive]): the store offers the update before "show on page", so updating is what reveals it.
+     */
     suspend fun install(
         e: CatalogEntry,
         page: Int,
