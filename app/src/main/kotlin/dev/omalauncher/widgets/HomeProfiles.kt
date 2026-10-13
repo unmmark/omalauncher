@@ -152,7 +152,8 @@ class HomeProfiles(
 
     /**
      * Something is being added from the home screen under [key]. New, it shows only in the profile showing:
-     * the other one hides it. One that [existed] and is hidden here comes back rather than as a second copy.
+     * the other one hides it, but only once the open layout exists ([seeded]): before the first unfold, [seed] places
+     * everything from the folded home, so nothing needs hiding there. One that [existed] and is hidden here comes back rather than as a second copy.
      */
     fun arrive(
         key: String,
@@ -161,7 +162,7 @@ class HomeProfiles(
         if (existed) return if (isHidden(key)) Arrival.Reveal else Arrival.Present
         val other = if (active == Profile.Open) Profile.Folded else Profile.Open
         hidden.getValue(active).remove(key)
-        if (!isHidden(key, other)) hidden.getValue(other) += key
+        if (seeded && !isHidden(key, other)) hidden.getValue(other) += key
         save()
         return Arrival.New
     }

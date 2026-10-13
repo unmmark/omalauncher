@@ -263,7 +263,10 @@ class WidgetEngine(
         }
     }
 
-    /** Pages chosen on the phone override the file's own `page:`, so store installs land where you are without editing the file. */
+    /**
+     * Puts [fileName] on [page] of the profile showing. Open, in the open layout's own page map. Folded, it overrides
+     * the file's own `page:`, so store installs land where you are without editing the file.
+     */
     fun setPage(
         fileName: String,
         page: Int,

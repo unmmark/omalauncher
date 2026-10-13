@@ -53,10 +53,19 @@ class HomeProfilesTest {
 
     @Test fun somethingNewShowsOnlyWhereItWasMade() {
         val p = profiles()
+        p.seed(emptyList())
         p.active = Profile.Open
         assertEquals(Arrival.New, p.arrive("a.owl", existed = false))
         assertTrue(p.isHidden("a.owl", Profile.Folded))
         assertFalse(p.isHidden("a.owl", Profile.Open))
+    }
+
+    @Test fun somethingMadeBeforeTheFirstUnfoldCarriesOver() {
+        val p = profiles()
+        assertEquals(Arrival.New, p.arrive("a.owl", existed = false))
+        assertFalse(p.isHidden("a.owl", Profile.Open))
+        p.seed(listOf(Placed("a.owl", 1, Cell(0, 0, 2, 2))))
+        assertEquals(Cell(0, 0, 2, 2), p.open.cell("a.owl"))
     }
 
     @Test fun somethingHiddenHereComesBackInsteadOfACopy() {
