@@ -130,6 +130,18 @@ class WidgetLayout(
     ): List<HomeItem> {
         grid = cols to rows
         var changed = false
+        // A cell past the grid's edge, or over one kept before it, is placed afresh: tiles drawn on top of each
+        // other can't be moved or resized. Early fold layouts could save such cells.
+        val kept = ArrayList<Cell>()
+        for (item in items) {
+            val c = cells[item.key]?.let { if (item.resizable) it else it.copy(w = 1, h = 1) } ?: continue
+            if (c.x < 0 || c.right > cols || kept.any { it.overlaps(c) }) {
+                cells.remove(item.key)
+                changed = true
+            } else {
+                kept += c
+            }
+        }
         val homeless = ArrayList<HomeItem>()
         for (item in items) {
             if (cells[item.key] != null) continue

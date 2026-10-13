@@ -34,4 +34,27 @@ class WidgetLayoutTest {
         assertNull(layout.cell("a.owl"))
         assertEquals(3, layout.page("a.owl"))
     }
+
+    @Test fun aCellPastTheEdgeOrOverAnotherIsPlacedAfresh() {
+        val layout = WidgetLayout(FakePrefs())
+        // As a drop on the open grid could save into the folded layout before profiles switched touch handling.
+        layout.set("a.owl", Cell(0, 3, 6, 4))
+        layout.set("b.owl", Cell(6, 5, 6, 2))
+        layout.set("c.owl", Cell(0, 4, 3, 2))
+        layout.place(listOf(widget("a.owl", 6, 4), widget("b.owl", 6, 2), widget("c.owl", 3, 2)), GRID_COLUMNS, 10)
+        assertEquals(Cell(0, 3, 6, 4), layout.cell("a.owl"))
+        assertEquals(Cell(0, 0, 6, 2), layout.cell("b.owl"))
+        assertEquals(Cell(0, 7, 3, 2), layout.cell("c.owl"))
+    }
+
+    @Test fun aSoundLayoutIsLeftAsItIs() {
+        val prefs = FakePrefs()
+        val layout = WidgetLayout(prefs)
+        layout.set("a.owl", Cell(0, 0, 3, 3))
+        layout.set("b.owl", Cell(3, 0, 3, 3))
+        layout.save()
+        val before = HashMap(prefs.values)
+        layout.place(listOf(widget("a.owl", 3, 3), widget("b.owl", 3, 3)), GRID_COLUMNS, 10)
+        assertEquals(before, prefs.values)
+    }
 }
